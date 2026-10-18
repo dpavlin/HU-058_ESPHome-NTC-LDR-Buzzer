@@ -117,6 +117,28 @@ class Aip33628Panel : public Component {
     dirty_ = true;
   }
 
+  // Date dash (LED 17, Block 2 SEG_ANNUN) independent control.
+  void set_date_dash(bool on) {
+    dash_enabled_ = on;
+    dirty_ = true;
+  }
+  void set_date_dash_color(bool on, float r, float g, float b, float brightness) {
+    dash_enabled_ = on && brightness > 0.0f;
+    dash_custom_color_ = true;
+    dash_rgb_[0] = r < 0.0f ? 0.0f : (r > 1.0f ? 1.0f : r);
+    dash_rgb_[1] = g < 0.0f ? 0.0f : (g > 1.0f ? 1.0f : g);
+    dash_rgb_[2] = b < 0.0f ? 0.0f : (b > 1.0f ? 1.0f : b);
+    dash_brightness_ = brightness < 0.0f ? 0.0f : (brightness > 1.0f ? 1.0f : brightness);
+    dirty_ = true;
+    apply_colors_();
+  }
+  void clear_date_dash_color() {
+    dash_custom_color_ = false;
+    dirty_ = true;
+    apply_colors_();
+  }
+  bool get_date_dash() const { return dash_enabled_; }
+
   void setup() override;
   void loop() override;
   void dump_config() override;
@@ -189,6 +211,10 @@ class Aip33628Panel : public Component {
   bool twelve_hour_{true};
   bool blink_colon_{true};
   bool online_{false};
+  bool dash_enabled_{false};
+  bool dash_custom_color_{false};
+  float dash_rgb_[3]{1.0f, 1.0f, 1.0f};
+  float dash_brightness_{1.0f};
 
   // Which positions are lit, before color is applied.
   bool on_[4][9]{};   // [block][segment], segments A..G then annunciator, annunciator 2
@@ -245,6 +271,7 @@ class Aip33628Panel : public Component {
 class Aip33628Light : public light::LightOutput {
  public:
   void set_panel(Aip33628Panel *panel) { panel_ = panel; }
+  void set_is_dash(bool is_dash) { is_dash_ = is_dash; }
 
   light::LightTraits get_traits() override {
     auto traits = light::LightTraits();
@@ -261,11 +288,16 @@ class Aip33628Light : public light::LightOutput {
     // since gamma lives in the component.
     float bright;
     state->current_values_as_brightness(&bright);
+    if (is_dash_) {
+      panel_->set_date_dash_color(v.is_on(), v.get_red(), v.get_green(), v.get_blue(), bright);
+    } else {
     panel_->set_light(v.is_on(), v.get_red(), v.get_green(), v.get_blue(), bright);
+  }
   }
 
  protected:
   Aip33628Panel *panel_{nullptr};
+  bool is_dash_{false};
 };
 
 }  // namespace aip33628
