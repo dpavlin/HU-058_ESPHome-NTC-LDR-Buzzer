@@ -1,5 +1,35 @@
 # Open firmware for the HU-058D WiFi clock with added buzzer, NTC and light sensor
 
+## Recent Improvements & Upgrades (dpavlin fork)
+
+This fork includes significant upgrades to display smoothness, color mixing, hardware indicators, and air quality telemetry:
+
+### 1. 4-Frame Temporal Dithering (FRC) & Gamma 2.0 Calibration
+- **60 Duty Levels (vs 16 Native)**: The AiP33628 display driver operates natively with 4-bit Binary Code Modulation (BCM), providing only 16 discrete levels per channel (0 to 15). We implemented a 4-phase temporal dither engine in [`firmware/esphome/components/aip33628/`](firmware/esphome/components/aip33628/) that subdivides each discrete step into 4 sub-steps ($0, 1/4, 2/4, 3/4$), expanding color resolution to 60 duty levels.
+- **High-Frequency Phase Balancing**: Dither bitmasks (`0b0000`, `0b0010`, `0b0101`, `0b0111`) cycle across frames at $104.2\text{ Hz}$ full-cycle ($208.3\text{ Hz}$ half-steps), completely eliminating low-frequency flicker.
+- **Perceptual Gamma Recalibration**: Calibrated `PANEL_GAMMA` from 2.8 to 2.0. This reduces the unlit dead-zone from $29.7\%$ to $9.1\%$ of the input range and lowers the initial step jump in human perceived lightness ($L^*$) from $32.4\%$ down to $\sim 8\%$, producing smooth Yellow $\rightarrow$ Red and dark blue color fades.
+
+### 2. Independent AM Indicator & Date Dash Lights
+- **Dedicated Entities**: Split the AM indicator (LED 8, Block 0 `SEG_ANNUN`) and Date Dash (LED 17, Block 2 `SEG_ANNUN`) into independently addressable RGB light and switch entities in ESPHome and Home Assistant (`light.wifi_clock_am_indicator`, `light.wifi_clock_date_dash`).
+- **Independent Color Tiering**: Both indicators can display custom RGB colors and brightness levels independently of the master clock digits, colon, and active background lighting effects.
+- **Fixed Symbol Conflict**: Resolved C++ enum conflict with the ESP32 Arduino core macro `#define DISPLAY 0x1` by transitioning component typing to `LightType::PANEL`.
+
+### 3. Air Quality (PMS3003 AQI) Color Mapping
+- **Home Assistant Telemetry**: Automated color modulation of the AM indicator based on real-time PMS3003 $\text{PM}_{2.5}$ readings ($0 - 100\ \mu\text{g/m}^3$) across a 3-phase piecewise linear ramp:
+  - **Good to Moderate** ($0 \le \text{PM}_{2.5} \le 25\ \mu\text{g/m}^3$): Pure Green ($[0, 255, 0]$) $\rightarrow$ Yellow ($[255, 255, 0]$)
+  - **Moderate to Unhealthy** ($25 < \text{PM}_{2.5} \le 55\ \mu\text{g/m}^3$): Yellow ($[255, 255, 0]$) $\rightarrow$ Orange $\rightarrow$ Pure Red ($[255, 0, 0]$)
+  - **Very Unhealthy to Hazardous** ($\text{PM}_{2.5} > 55\ \mu\text{g/m}^3$): Red ($[255, 0, 0]$) $\rightarrow$ Crimson $\rightarrow$ Magenta ($[255, 0, 180]$)
+
+### 4. Interactive PWM & Brightness Simulation Tool
+- **Live Diagnostics Tool**: Open [`clock-pwm-simulation.html`](clock-pwm-simulation.html) in any web browser to inspect:
+  - Side-by-side visual comparison: Ideal 24-bit sRGB vs. actual AiP33628 hardware BCM output.
+  - Interactive transition scenarios: Yellow $\rightarrow$ Red fade, Cyan $\rightarrow$ Magenta, AQI $\text{PM}_{2.5}$ indicator ramp, 360° Color Wheel, and single channel fades.
+  - Quantitative telemetry: BCM duty steps, CIE 1976 perceived lightness ($L^*$), Weber-Fechner contrast ratios, and quantization step deltas ($\Delta L^*$).
+
+---
+
+## Hardware Modifications (Upstream)
+
 I have added support for buzzer, temp and light sensor. The 5V needs to be cut and 3.3V connected instead. Only clock.yaml has been changed. Added temperature, beep with changeable duration and frequency, and light (0-100%) to Home Assistant device dashboard. 
 
 The new connections are:
