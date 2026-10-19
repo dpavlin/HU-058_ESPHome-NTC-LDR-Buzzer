@@ -134,7 +134,7 @@ static uint8_t glyph(char c) {
 // current and in duty, so both have to be linearized here. 2.8 is the same
 // exponent ESPHome uses by default, which is why gamma_correct is set to 1.0
 // on the light itself. Applying it in both places would square it.
-static const float PANEL_GAMMA = 2.8f;
+static const float PANEL_GAMMA = 2.0f;
 
 // Slider position to a current step. A plain gamma curve assumes the output
 // can reach zero. This panel bottoms out at IS_MA[0], so a third of the
@@ -161,7 +161,7 @@ static const float LAMP_BRIGHTNESS = 0.5f;
 // saturated color. Pink is the clearest case, and rounds all the way to
 // white.
 static uint8_t duty_level(float c) {
-  return (uint8_t) lroundf(powf(clamp(c, 0.0f, 1.0f), PANEL_GAMMA) * (COLOR_LEVELS - 1));
+  return (uint8_t) lroundf(powf(clamp(c, 0.0f, 1.0f), PANEL_GAMMA) * TOTAL_LEVELS);
 }
 
 static int com_index(uint8_t cs) {
@@ -357,7 +357,7 @@ void Aip33628Panel::apply_colors_() {
     for (auto &blk : level_)
       for (auto &seg : blk)
         for (uint8_t &ch : seg)
-          ch = COLOR_LEVELS - 1;
+          ch = TOTAL_LEVELS;
     dirty_ = true;
     return;
   }
@@ -830,70 +830,80 @@ void Aip33628Panel::loop() {
   render_();
 }
 
+// 4-phase temporal dither bitmask (bit k set if frame k gets +1).
+// High-frequency balanced distribution:
+// frac 0: 0/4 -> 0b0000
+// frac 1: 1/4 -> 0b0010 (frame 1)
+// frac 2: 2/4 -> 0b0101 (frames 0 and 2, alternating at 208.3 Hz)
+// frac 3: 3/4 -> 0b1101 (frames 0, 2, 3)
+static const uint8_t DITHER_MASK[4] = {0b0000, 0b0010, 0b0101, 0b1101};
+
 // Collapse the panel state into a scan schedule. Each COM pair is split into
 // COLOR_BITS binary weighted sub-frames, and a channel at duty level L is lit
-// in sub-frame k whenever bit k of L is set. Any level from 0 to
-// COLOR_LEVELS - 1 is reachable that way, with no constraint that a dimmer
-// channel be a subset of a brighter one.
+// in sub-frame k whenever bit k of L is set.
 //
-// Per digit color costs nothing here. Each driver and COM pair together
-// belong to exactly one block, since the two blocks on a driver sit on
-// different COM pairs, so a slot only ever holds one block's color per
-// driver and the two drivers carry their own SS word anyway. Four different
-// colors reach sixteen steps, which is exactly MAX_STEPS.
+// 4-frame temporal dithering (FRC) expands the 16 hardware levels into 61
+// discrete duty levels (0 to TOTAL_LEVELS = 60). A 4-frame cycle completes in
+// 9.6ms (104.2Hz), well above human flicker fusion. Spatial phase interleaving
+// between digits balances load across frames without chromatic fringing.
 void Aip33628Panel::render_() {
-  uint16_t sub[2][4][COLOR_BITS] = {};
-
-  for (int blk = 0; blk < 4; blk++) {
-    const Block &b = BLOCKS[blk];
-    for (int seg = 0; seg < 9; seg++) {
-      if (!on_[blk][seg])
-        continue;
-      const SegPos &sp = SEGMAP[seg];
-      int ci = com_index(sp.side ? b.com_hi : b.com_lo);
-      int base = 3 * sp.led - 2;  // LED1 is SEG1..SEG3, LED5 is SEG13..SEG15
-      for (int ch = 0; ch < 3; ch++) {
-        uint8_t lv = level_[blk][seg][ch];
-        if (lv == 0)
-          continue;
-        uint16_t bit = (uint16_t) (1u << (base + ch));
-        for (int k = 0; k < COLOR_BITS; k++) {
-          if (lv & (1u << k))
-            sub[b.drv][ci][k] |= bit;
-        }
-      }
-    }
-  }
-
-  // IS is set by the brightness alone and never by what is on screen. Making
-  // it depend on the lit sink count changes the brightness of the whole panel
-  // every time the colon blinks. The stock firmware held IS fixed across
-  // colon on and colon off, and ran 0xF with a white digit lit.
-  // The lamp test brings its own current, while max_current_ remains the
-  // thermal ceiling for every mode.
   uint8_t want = mode_ == Mode::LAMP ? lamp_current_ : requested_current_;
   uint8_t is = want < max_current_ ? want : max_current_;
 
   ScanBuf &b = buf_[front_ ^ 1];
   b.n = 0;
-  for (int ci = 0; ci < 4; ci++) {
-    for (int k = 0; k < COLOR_BITS; k++) {
-      uint16_t s0 = sub[0][ci][k];
-      uint16_t s1 = sub[1][ci][k];
-      uint8_t units = (uint8_t) (1u << k);
-      // Identical neighbors inside one COM pair merge, so a saturated color,
-      // where every sub-frame carries the same data, ends up as one step of
-      // the full 600us. Merging never crosses a COM boundary, because CS
-      // changes there and the drivers have to be re-sent regardless.
-      if (k > 0 && b.n > 0 && b.step[b.n - 1].ss[0] == s0 && b.step[b.n - 1].ss[1] == s1) {
-        b.step[b.n - 1].units = (uint8_t) (b.step[b.n - 1].units + units);
-        continue;
+
+  for (int f = 0; f < DITHER_FRAMES; f++) {
+    uint16_t sub[2][4][COLOR_BITS] = {};
+
+    for (int blk = 0; blk < 4; blk++) {
+      const Block &bblk = BLOCKS[blk];
+      uint8_t phase = blk & 3;
+      uint8_t eff_f = (f + phase) & 3;
+
+      for (int seg = 0; seg < 9; seg++) {
+        if (!on_[blk][seg])
+          continue;
+        const SegPos &sp = SEGMAP[seg];
+        int ci = com_index(sp.side ? bblk.com_hi : bblk.com_lo);
+        int base = 3 * sp.led - 2;  // LED1 is SEG1..SEG3, LED5 is SEG13..SEG15
+        for (int ch = 0; ch < 3; ch++) {
+          uint8_t lv = level_[blk][seg][ch];
+          if (lv == 0)
+            continue;
+          uint8_t base_lv = lv >> 2;
+          uint8_t frac = lv & 3;
+          uint8_t frame_lv = base_lv + ((DITHER_MASK[frac] >> eff_f) & 1);
+          if (frame_lv == 0)
+            continue;
+          uint16_t bit = (uint16_t) (1u << (base + ch));
+          for (int k = 0; k < COLOR_BITS; k++) {
+            if (frame_lv & (1u << k))
+              sub[bblk.drv][ci][k] |= bit;
+          }
+        }
       }
-      ScanStep &st = b.step[b.n++];
-      st.units = units;
-      st.ss[0] = s0;
-      st.ss[1] = s1;
-      st.cs = COM_SEQ[ci];
+    }
+
+    for (int ci = 0; ci < 4; ci++) {
+      for (int k = 0; k < COLOR_BITS; k++) {
+        uint16_t s0 = sub[0][ci][k];
+        uint16_t s1 = sub[1][ci][k];
+        uint8_t units = (uint8_t) (1u << k);
+        // Identical neighbors inside one COM pair merge, so a saturated color,
+        // where every sub-frame carries the same data, ends up as one step of
+        // the full 600us. Merging never crosses a COM boundary, because CS
+        // changes there and the drivers have to be re-sent regardless.
+        if (k > 0 && b.n > 0 && b.step[b.n - 1].ss[0] == s0 && b.step[b.n - 1].ss[1] == s1) {
+          b.step[b.n - 1].units = (uint8_t) (b.step[b.n - 1].units + units);
+          continue;
+        }
+        ScanStep &st = b.step[b.n++];
+        st.units = units;
+        st.ss[0] = s0;
+        st.ss[1] = s1;
+        st.cs = COM_SEQ[ci];
+      }
     }
   }
   b.is = is;

@@ -27,8 +27,10 @@ static const uint8_t DRAM_ATTR COM_SEQ[4] = {0x30, 0x0C, 0x03, 0xC0};
 // 6.4us frame send, so there is room to spare.
 static const uint8_t COLOR_BITS = 4;
 static const uint8_t COLOR_LEVELS = 1 << COLOR_BITS;  // 0 to 15 inclusive
+static const uint8_t DITHER_FRAMES = 4;
+static const uint8_t TOTAL_LEVELS = (COLOR_LEVELS - 1) * DITHER_FRAMES;  // 0 to 60 inclusive
 static const uint32_t UNIT_US = 40;
-static const uint8_t MAX_STEPS = 4 * COLOR_BITS;
+static const uint8_t MAX_STEPS = 4 * COLOR_BITS * DITHER_FRAMES;  // 64 steps maximum
 
 // Current step to mA, from the datasheet. Tenths of a mA.
 static const uint16_t IS_MA[16] = {25, 51, 76, 101, 126, 152, 177, 202,
@@ -219,7 +221,7 @@ class Aip33628Panel : public Component {
   // Which positions are lit, before color is applied.
   bool on_[4][9]{};   // [block][segment], segments A..G then annunciator, annunciator 2
   bool enabled_{false};
-  // [block][segment][channel], 0 to COLOR_LEVELS - 1, index by Channel.
+  // [block][segment][channel], 0 to TOTAL_LEVELS, index by Channel.
   uint8_t level_[4][9][3]{};
   uint8_t requested_current_{15};
 
