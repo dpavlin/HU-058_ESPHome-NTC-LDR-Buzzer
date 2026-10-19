@@ -95,6 +95,17 @@
       transition: background 0.05s ease;
       box-shadow: 0 0 8px currentColor;
     }
+    .am-dot {
+      position: absolute;
+      top: 6px;
+      left: 6px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #333;
+      transition: background 0.05s ease;
+      box-shadow: 0 0 8px currentColor;
+    }
 
     /* Controls */
     .control-row { display: flex; flex-direction: column; gap: 6px; }
@@ -193,7 +204,8 @@
         </div>
         <div class="clock-display-panel" id="ideal-panel">
           <div class="clock-digits-row">
-            <div class="digit-group" id="ideal-hours">
+            <div class="digit-group" id="ideal-hours" style="position: relative;">
+              <div class="am-dot" id="ideal-am" title="AM Indicator (LED 8)"></div>
               <svg class="digit-svg" id="ideal-d0" viewBox="0 0 100 150"></svg>
               <svg class="digit-svg" id="ideal-d1" viewBox="0 0 100 150"></svg>
             </div>
@@ -229,7 +241,8 @@
         </div>
         <div class="clock-display-panel" id="hw-panel">
           <div class="clock-digits-row">
-            <div class="digit-group" id="hw-hours">
+            <div class="digit-group" id="hw-hours" style="position: relative;">
+              <div class="am-dot" id="hw-am" title="AM Indicator (LED 8)"></div>
               <svg class="digit-svg" id="hw-d0" viewBox="0 0 100 150"></svg>
               <svg class="digit-svg" id="hw-d1" viewBox="0 0 100 150"></svg>
             </div>
@@ -276,7 +289,7 @@
         <div class="btn-group" id="scenario-buttons">
           <button class="active" data-scenario="yellow-red">Yellow &rarr; Red Fade</button>
           <button data-scenario="dark-blue">Cyan &rarr; Dark Blue &rarr; Magenta</button>
-          <button data-scenario="aqi-dash">Date Dash AQI (PM2.5)</button>
+          <button data-scenario="aqi-am">AM Indicator AQI (PM2.5)</button>
           <button data-scenario="color-cycle">Color Cycle (Hue 0&deg;&ndash;360&deg;)</button>
           <button data-scenario="single-fade">Single Channel Fade (0&ndash;100%)</button>
         </div>
@@ -533,6 +546,7 @@
             b = 1.0;
           }
           break;
+        case 'aqi-am':
         case 'aqi-dash':
           // t represents PM2.5 from 0 to 100 ug/m3
           const pm = t * 100.0;
@@ -591,6 +605,8 @@
       document.getElementById('ideal-colon-bot').style.background = idealColorStr;
       document.getElementById('ideal-dash').style.background = idealColorStr;
       document.getElementById('ideal-dash').style.color = idealColorStr;
+      document.getElementById('ideal-am').style.background = idealColorStr;
+      document.getElementById('ideal-am').style.color = idealColorStr;
 
       // Hardware 4-Bit Emulation
       const dutyR = calculateDuty(rIn, currentGamma, currentDither);
@@ -627,6 +643,8 @@
       document.getElementById('hw-colon-bot').style.background = hwColorStr;
       document.getElementById('hw-dash').style.background = hwColorStr;
       document.getElementById('hw-dash').style.color = hwColorStr;
+      document.getElementById('hw-am').style.background = hwColorStr;
+      document.getElementById('hw-am').style.color = hwColorStr;
 
       // Pointer update
       document.getElementById('ptr-ideal').style.left = `${currentProgress * 100}%`;
@@ -839,7 +857,7 @@
     function updateSliderLabel() {
       const label = document.getElementById('slider-param-name');
       const val = document.getElementById('slider-param-val');
-      if (currentScenario === 'aqi-dash') {
+      if (currentScenario === 'aqi-am' || currentScenario === 'aqi-dash') {
         const pm = (currentProgress * 100).toFixed(1);
         label.textContent = 'Particulate Concentration PM2.5';
         val.textContent = `${pm} µg/m³`;
