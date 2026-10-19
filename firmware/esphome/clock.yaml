@@ -172,6 +172,32 @@ api:
             else:
               - switch.turn_off: date_dash_switch
 
+    - action: set_am_indicator_color
+      variables:
+        red: int
+        green: int
+        blue: int
+        brightness: int
+      then:
+        - light.turn_on:
+            id: am_pm_light
+            red: !lambda "return red / 255.0f;"
+            green: !lambda "return green / 255.0f;"
+            blue: !lambda "return blue / 255.0f;"
+            brightness: !lambda "return brightness / 255.0f;"
+
+    - action: set_am_indicator
+      variables:
+        state: bool
+      then:
+        - if:
+            condition:
+              lambda: "return state;"
+            then:
+              - switch.turn_on: am_pm_switch
+            else:
+              - switch.turn_off: am_pm_switch
+
 ota:
   - platform: esphome
     password: !secret ota_password
@@ -224,6 +250,14 @@ light:
     aip33628_id: panel
     type: date_dash
     name: Date Dash
+    restore_mode: RESTORE_DEFAULT_OFF
+    gamma_correct: 1.0
+
+  - platform: aip33628
+    id: am_pm_light
+    aip33628_id: panel
+    type: am_pm
+    name: AM Indicator
     restore_mode: RESTORE_DEFAULT_OFF
     gamma_correct: 1.0
 
@@ -346,6 +380,22 @@ switch:
       - lambda: |-
           id(panel)->set_date_dash(false);
       - light.turn_off: date_dash_light
+
+  - platform: template
+    id: am_pm_switch
+    name: AM Indicator
+    icon: mdi:circle-small
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    turn_on_action:
+      - lambda: |-
+          id(panel)->clear_am_indicator_color();
+          id(panel)->set_am_indicator(true);
+      - light.turn_on: am_pm_light
+    turn_off_action:
+      - lambda: |-
+          id(panel)->set_am_indicator(false);
+      - light.turn_off: am_pm_light
 
 output:
   - platform: ledc
@@ -571,3 +621,4 @@ number:
             u,
             10000
           );
+

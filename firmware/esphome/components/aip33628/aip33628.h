@@ -141,6 +141,28 @@ class Aip33628Panel : public Component {
   }
   bool get_date_dash() const { return dash_enabled_; }
 
+  // AM/PM indicator (LED 8, Block 0 SEG_ANNUN) independent control.
+  void set_am_indicator(bool on) {
+    am_enabled_ = on;
+    dirty_ = true;
+  }
+  void set_am_indicator_color(bool on, float r, float g, float b, float brightness) {
+    am_enabled_ = on && brightness > 0.0f;
+    am_custom_color_ = true;
+    am_rgb_[0] = r < 0.0f ? 0.0f : (r > 1.0f ? 1.0f : r);
+    am_rgb_[1] = g < 0.0f ? 0.0f : (g > 1.0f ? 1.0f : g);
+    am_rgb_[2] = b < 0.0f ? 0.0f : (b > 1.0f ? 1.0f : b);
+    am_brightness_ = brightness < 0.0f ? 0.0f : (brightness > 1.0f ? 1.0f : brightness);
+    dirty_ = true;
+    apply_colors_();
+  }
+  void clear_am_indicator_color() {
+    am_custom_color_ = false;
+    dirty_ = true;
+    apply_colors_();
+  }
+  bool get_am_indicator() const { return am_enabled_; }
+
   void setup() override;
   void loop() override;
   void dump_config() override;
@@ -217,6 +239,10 @@ class Aip33628Panel : public Component {
   bool dash_custom_color_{false};
   float dash_rgb_[3]{1.0f, 1.0f, 1.0f};
   float dash_brightness_{1.0f};
+  bool am_enabled_{false};
+  bool am_custom_color_{false};
+  float am_rgb_[3]{1.0f, 1.0f, 1.0f};
+  float am_brightness_{1.0f};
 
   // Which positions are lit, before color is applied.
   bool on_[4][9]{};   // [block][segment], segments A..G then annunciator, annunciator 2
@@ -270,10 +296,13 @@ class Aip33628Panel : public Component {
   bool dirty_{true};
 };
 
+enum class LightType : uint8_t { PANEL = 0, DATE_DASH = 1, AM_PM = 2 };
+
 class Aip33628Light : public light::LightOutput {
  public:
   void set_panel(Aip33628Panel *panel) { panel_ = panel; }
-  void set_is_dash(bool is_dash) { is_dash_ = is_dash; }
+  void set_is_dash(bool is_dash) { type_ = is_dash ? LightType::DATE_DASH : LightType::PANEL; }
+  void set_type(LightType type) { type_ = type; }
 
   light::LightTraits get_traits() override {
     auto traits = light::LightTraits();
@@ -290,17 +319,20 @@ class Aip33628Light : public light::LightOutput {
     // since gamma lives in the component.
     float bright;
     state->current_values_as_brightness(&bright);
-    if (is_dash_) {
+    if (type_ == LightType::DATE_DASH) {
       panel_->set_date_dash_color(v.is_on(), v.get_red(), v.get_green(), v.get_blue(), bright);
+    } else if (type_ == LightType::AM_PM) {
+      panel_->set_am_indicator_color(v.is_on(), v.get_red(), v.get_green(), v.get_blue(), bright);
     } else {
-    panel_->set_light(v.is_on(), v.get_red(), v.get_green(), v.get_blue(), bright);
-  }
+      panel_->set_light(v.is_on(), v.get_red(), v.get_green(), v.get_blue(), bright);
+    }
   }
 
  protected:
   Aip33628Panel *panel_{nullptr};
-  bool is_dash_{false};
+  LightType type_{LightType::PANEL};
 };
 
 }  // namespace aip33628
 }  // namespace esphome
+

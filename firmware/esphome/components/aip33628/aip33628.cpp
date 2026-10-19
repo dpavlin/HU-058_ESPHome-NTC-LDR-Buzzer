@@ -370,6 +370,12 @@ void Aip33628Panel::apply_colors_() {
         level_[blk][seg][CH_BLUE] = duty_level(dash_rgb_[2] * dash_brightness_);
         continue;
       }
+      if (blk == 0 && seg == SEG_ANNUN && am_custom_color_) {
+        level_[blk][seg][CH_RED] = duty_level(am_rgb_[0] * am_brightness_);
+        level_[blk][seg][CH_GREEN] = duty_level(am_rgb_[1] * am_brightness_);
+        level_[blk][seg][CH_BLUE] = duty_level(am_rgb_[2] * am_brightness_);
+        continue;
+      }
       const float *c = pos_set_[blk][seg]  ? pos_rgb_[blk][seg]
                        : digit_set_[blk]   ? digit_rgb_[blk]
                                            : base_rgb_;
@@ -769,6 +775,9 @@ void Aip33628Panel::loop() {
     if (dash_enabled_) {
       write_pos_(2, SEG_ANNUN, true);
     }
+    if (am_enabled_) {
+      write_pos_(0, SEG_ANNUN, true);
+    }
     render_();
     return;
   }
@@ -820,8 +829,8 @@ void Aip33628Panel::loop() {
     if (online_) write_pos_(1, SEG_ANNUN, true);
     write_pos_(1, SEG_ANNUN2, true);
   }
-  if (twelve_hour_ && !pm) {
-    write_pos_(0, SEG_ANNUN, true);  // AM indicator, lit through the morning
+  if (am_enabled_ || (twelve_hour_ && !pm)) {
+    write_pos_(0, SEG_ANNUN, true);  // AM indicator
   }
   if (dash_enabled_) {
     write_pos_(2, SEG_ANNUN, true);  // Date dash indicator
@@ -917,3 +926,4 @@ void Aip33628Panel::render_() {
 
 }  // namespace aip33628
 }  // namespace esphome
+
