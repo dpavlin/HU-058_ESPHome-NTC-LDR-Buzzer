@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en-us" itemscope itemtype="http://schema.org/Article">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="description" content="Hacking the HU-058 ESP32 digital LED clock: exploring community forks, reverse engineering AiP33628 display driver protocols, and turning the unused date dash into a smooth, ambient PMS3003 air quality indicator with ESPHome and Home Assistant.">
+    <meta name="generator" content="Movable Type 7.0.4">
+    <title>Hacking the HU-058 ESP32 LED Clock: Turning the Date Dash into a Smooth PMS3003 Air Quality Indicator - Dobrica Pavlinu&scaron;i&#x107;'s Weblog / Blog</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <link rel="stylesheet" href="https://blog.rot13.org/styles.css">
+    <!--[if lt IE 9]>
+    <link rel="stylesheet" href="https://blog.rot13.org/styles_ie.css">
+    <script src="https://blog.rot13.org/mt-static/support/theme_static/rainier/js/html5shiv.js"></script>
+    <![endif]-->
+
+    <link rel="start" href="https://blog.rot13.org/">
+    <link rel="alternate" type="application/atom+xml" title="Recent Entries" href="https://blog.rot13.org/atom.xml" />
+    <link rel="canonical" href="https://blog.rot13.org/2026/10/hacking-hu-058-esp32-clock-date-dash-pms3003-air-quality-esphome.html" />
+
+    <!-- Open Graph Protocol -->
+    <meta property="og:type" content="article">
+    <meta property="og:locale" content="en-us">
+    <meta property="og:title" content="Hacking the HU-058 ESP32 LED Clock: Turning the Date Dash into a Smooth PMS3003 Air Quality Indicator">
+    <meta property="og:url" content="https://blog.rot13.org/2026/10/hacking-hu-058-esp32-clock-date-dash-pms3003-air-quality-esphome.html">
+    <meta property="og:description" content="Reverse engineering AiP33628 LED matrix drivers, patching ESPHome C++ components, compiling inside Home Assistant VM, and transforming an unlit date dash into an ambient PMS3003 air quality indicator.">
+    <meta property="og:site_name" content="Dobrica Pavlinu&scaron;i&#x107;'s Weblog / Blog">
+    <meta property="og:image" content="https://blog.rot13.org/mt-static/support/theme_static/rainier/img/siteicon-sample.png">
+
+    <!-- Microdata -->
+    <meta itemprop="description" content="Reverse engineering AiP33628 LED matrix drivers, patching ESPHome C++ components, compiling inside Home Assistant VM, and transforming an unlit date dash into an ambient PMS3003 air quality indicator.">
+    <meta itemprop="name" content="Hacking the HU-058 ESP32 LED Clock: Turning the Date Dash into a Smooth PMS3003 Air Quality Indicator">
+    <link itemprop="url" href="https://blog.rot13.org/2026/10/hacking-hu-058-esp32-clock-date-dash-pms3003-air-quality-esphome.html">
+    <link itemprop="image" href="https://blog.rot13.org/mt-static/support/theme_static/rainier/img/siteicon-sample.png">
+
+    <style>
+      /* Fallback styling for local viewing when remote stylesheet is unavailable */
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        line-height: 1.6;
+        color: #24292e;
+        background-color: #f6f8fa;
+        margin: 0;
+        padding: 0;
+      }
+      #container {
+        max-width: 960px;
+        margin: 0 auto;
+        background: #fff;
+        box-shadow: 0 0 10px rgba(0,0,0,0.05);
+      }
+      #container-inner { padding: 20px 40px; }
+      #header-content h1 a { color: #1a1a1a; text-decoration: none; font-size: 1.8em; }
+      #header-description { color: #666; margin-top: 4px; font-size: 0.9em; }
+      .breadcrumb { list-style: none; padding: 0; margin: 15px 0 25px 0; color: #666; font-size: 0.85em; display: flex; gap: 8px; }
+      .breadcrumb-list-item a { color: #0366d6; text-decoration: none; }
+      .breadcrumb-list-item::after { content: " /"; margin-left: 8px; color: #999; }
+      .breadcrumb-list-item:last-child::after { content: ""; }
+      .asset-name { font-size: 1.9em; margin-bottom: 10px; color: #111; line-height: 1.25; }
+      .asset-meta-list { list-style: none; padding: 0; margin: 0 0 25px 0; display: flex; flex-wrap: wrap; gap: 15px; color: #666; font-size: 0.85em; border-bottom: 1px solid #eaecef; padding-bottom: 12px; }
+      .asset-meta-list a { color: #0366d6; text-decoration: none; }
+      pre {
+        background-color: #f6f8fa;
+        border: 1px solid #e1e4e8;
+        border-radius: 6px;
+        padding: 14px;
+        overflow-x: auto;
+        font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, Courier, monospace;
+        font-size: 0.88em;
+        line-height: 1.45;
+      }
+      code {
+        font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, Courier, monospace;
+        background-color: rgba(27,31,35,0.05);
+        padding: 0.2em 0.4em;
+        border-radius: 3px;
+        font-size: 85%;
+      }
+      pre code { background: none; padding: 0; font-size: 100%; }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 20px 0;
+        font-size: 0.9em;
+      }
+      table th, table td {
+        border: 1px solid #dfe2e5;
+        padding: 8px 12px;
+        text-align: left;
+      }
+      table th { background-color: #f6f8fa; font-weight: 600; }
+      table tr:nth-child(2n) { background-color: #fcfcfc; }
+      blockquote {
+        margin: 15px 0;
+        padding: 0 15px;
+        color: #6a737d;
+        border-left: 4px solid #dfe2e5;
+      }
+      @media (prefers-color-scheme: dark) {
+        body { background-color: #0d1117; color: #c9d1d9; }
+        #container { background-color: #161b22; box-shadow: none; }
+        #header-content h1 a { color: #f0f6fc; }
+        #header-description { color: #8b949e; }
+        .asset-name { color: #f0f6fc; }
+        .asset-meta-list { border-bottom-color: #30363d; color: #8b949e; }
+        pre { background-color: #0d1117; border-color: #30363d; color: #c9d1d9; }
+        code { background-color: rgba(240,246,252,0.15); color: #f0f6fc; }
+        table th { background-color: #21262d; }
+        table td, table th { border-color: #30363d; }
+        table tr:nth-child(2n) { background-color: #161b22; }
+        blockquote { border-left-color: #30363d; color: #8b949e; }
+        a { color: #58a6ff; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="container">
+      <div id="container-inner">
+        <header id="header" role="banner">
+          <div id="header-inner">
+            <div id="header-content">
+              <h1>
+                <a href="https://blog.rot13.org/">Dobrica Pavlinu&scaron;i&#x107;'s Weblog / Blog</a>
+              </h1>
+              <p id="header-description">Personal weblog about technology, Open Source, perl, GNU etc...</p>
+            </div>
+            <nav role="navigation">
+              <ul>
+                <li><a href="https://blog.rot13.org/">Home</a></li>
+              </ul>
+            </nav>
+          </div>
+        </header>
+
+        <div id="content">
+          <div id="content-inner">
+            <ul class="breadcrumb breadcrumb-list">
+              <li class="breadcrumb-list-item"><a href="https://blog.rot13.org/">Home</a></li>
+              <li class="breadcrumb-list-item">Hacking the HU-058 ESP32 LED Clock: Turning the Date Dash into a Smooth PMS3003 Air Quality Indicator</li>
+            </ul>
+
+            <div id="individual-main" class="main" role="main">
+              <article id="entry-818" class="entry entry-asset asset hentry">
+                <div class="asset-header">
+                  <h2 itemprop="name" class="asset-name entry-title">Hacking the HU-058 ESP32 LED Clock: Turning the Date Dash into a Smooth PMS3003 Air Quality Indicator</h2>
+                  <footer class="asset-meta">
+                    <ul class="asset-meta-list">
+                      <li class="asset-meta-list-item">Posted on <time datetime="2026-10-19T10:48:43+02:00" itemprop="datePublished">October 19, 2026</time></li>
+                      <li class="asset-meta-list-item">by <span class="author entry-author vcard"><a class="fn url" href="http://www.rot13.org/~dpavlin/">Dobrica Pavlinu&scaron;i&#x107;</a></span></li>
+                      <li class="asset-meta-list-item">in <a itemprop="articleSection" rel="tag" href="https://blog.rot13.org/hardware/">hardware</a>, <a itemprop="articleSection" rel="tag" href="https://blog.rot13.org/esphome/">esphome</a>, <a itemprop="articleSection" rel="tag" href="https://blog.rot13.org/home-assistant/">home-assistant</a></li>
+                    </ul>
+                  </footer>
+                </div>
+
+                <div class="entry-content asset-content" itemprop="articleBody">
+                  <p>
+                  The HU-058 (often sold as the "HU-058 DIY Digital Electronic Clock Kit" on AliExpress) is an attractive desktop clock with large, vibrant four-digit 7-segment RGB LED blocks. Under the hood, rather than driving multiplexed segments through standard shift registers or dedicated MAX7219s, the kit uses two <strong>AiP33628</strong> 16-channel constant-current LED matrix drivers. When replaced or augmented with an ESP32 board, it becomes a versatile ESPHome-powered smart display.
+                  </p>
+
+                  <p>
+                  The physical layout features four 7-segment digits partitioned into two hour digits and two minute digits. In the middle space sits a colon (two distinct round dots) and a horizontal <strong>"date dash"</strong> bar (annunciator segment, LED 17). In standard clock mode, the colon blinks with the seconds or network state, but the date dash sits completely dark.
+                  </p>
+
+                  <p>
+                  Having an unlit RGB LED in the exact center of a desk clock seemed like a missed opportunity. I have a local <strong>Plantower PMS3003</strong> particulate matter sensor streaming real-time PM2.5 readings over MQTT on my home network. The plan: decouple the date dash LED from the rest of the display, expose it to Home Assistant as an independent RGB light entity, and create a smooth ambient indicator that continuously glides from green through yellow to red as particulate concentration changes&mdash;all without disrupting the clock display, color cycles, or night standby modes.
+                  </p>
+
+                  <p>
+                  Here is the whole journey: analyzing community forks, dissecting the AiP33628 driver architecture, patching the C++ component in ESPHome, building inside a libvirt Home Assistant container, and tuning a piecewise linear gradient in Jinja2.
+                  </p>
+
+                  <h3>1. Exploring the Community Forks: Hunting for LDR & Sensor Code</h3>
+
+                  <p>
+                  The foundational ESPHome implementation for this clock is maintained in <a href="https://github.com/misterblack1/HU-058_ESPHome"><code>misterblack1/HU-058_ESPHome</code></a>. Before writing new code from scratch, I queried the GitHub API across all 33 network forks to see what other builders had already implemented:
+                  </p>
+
+                  <pre><code>gh api repos/misterblack1/HU-058_ESPHome/forks --paginate --jq '.[].full_name'</code></pre>
+
+                  <p>
+                  Of the 33 forks, 15 had divergent commits ahead of upstream. Fetching their commit logs revealed two key findings:
+                  </p>
+
+                  <ul>
+                    <li><strong>LDR (Light Dependent Resistor) & NTC Support:</strong> Fork <a href="https://github.com/mrceedjay/HU-058_ESPHome-NTC-LDR-Buzzer"><code>mrceedjay/HU-058_ESPHome-NTC-LDR-Buzzer</code></a> was 55 commits ahead. It added support for the onboard photodiode/LDR on ADC GPIO34, an NTC thermistor on GPIO35, and an active buzzer on GPIO25.</li>
+                    <li><strong>ESP8266 Ports:</strong> Fork <code>herrceedjay/HU-058_ESPHome-ESP8266</code> adapted the timings for the ESP8266 architecture.</li>
+                  </ul>
+
+                  <p>
+                  Inspecting the LDR implementation confirmed that GPIO34 provides calibrated light readings out of the box. I switched my working branch to <code>mrceedjay/main</code> and saved all remote diffs locally in <code>remote/</code> for reference.
+                  </p>
+
+                  <h3>2. Hardware Architecture & The AiP33628 Protocol</h3>
+
+                  <p>
+                  To control an individual LED independently, you have to understand how the AiP33628 matrix driver functions.
+                  </p>
+
+                  <p>
+                  The clock houses two AiP33628 driver ICs, each capable of sinking 16 channels across 4 shorted COM line pairs (<code>0x30</code>, <code>0x0C</code>, <code>0x03</code>, <code>0xC0</code>), giving a 1/4 scan cycle. The display is divided into four blocks:
+                  </p>
+
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Block</th>
+                        <th>Digit</th>
+                        <th>Driver</th>
+                        <th>COM Low</th>
+                        <th>COM High</th>
+                        <th>Annunciator Segment</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>0 (Block 1)</td>
+                        <td>Hour tens</td>
+                        <td>Driver 1</td>
+                        <td>0x30</td>
+                        <td>0xC0</td>
+                        <td>AM indicator</td>
+                      </tr>
+                      <tr>
+                        <td>1 (Block 2)</td>
+                        <td>Hour ones</td>
+                        <td>Driver 1</td>
+                        <td>0x03</td>
+                        <td>0x0C</td>
+                        <td>Colon (upper & lower dots)</td>
+                      </tr>
+                      <tr>
+                        <td>2 (Block 3)</td>
+                        <td>Minute tens</td>
+                        <td>Driver 2</td>
+                        <td>0x30</td>
+                        <td>0xC0</td>
+                        <td><strong>Date dash (LED 17)</strong></td>
+                      </tr>
+                      <tr>
+                        <td>3 (Block 4)</td>
+                        <td>Minute ones</td>
+                        <td>Driver 2</td>
+                        <td>0x03</td>
+                        <td>0x0C</td>
+                        <td>Degree mark (&deg;)</td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  <p>
+                  Notice where the annunciators sit:
+                  </p>
+
+                  <ul>
+                    <li>The colon dots belong to Block 1 (Driver 1, COM high and COM low).</li>
+                    <li>The <strong>Date Dash</strong> sits physically between digits 2 and 3, but electrically belongs to <strong>Block 2 (Driver 2, COM high <code>0xC0</code>, Segment 7 <code>SEG_ANNUN</code>, LED ID 17)</strong>.</li>
+                  </ul>
+
+                  <p>
+                  <strong>The Current & Color Constraint:</strong> The AiP33628 has a global current setting <code>IS[3:0]</code> (ranging from 2.5mA at <code>0x0</code> to 40.4mA at <code>0xF</code>) that applies globally to the entire IC. However, channel duty cycles are driven by <strong>4-bit Binary Code Modulation (BCM)</strong>, providing 16 individual brightness steps (0 to 15) for each color channel (Red, Green, Blue) of each LED.
+                  </p>
+
+                  <p>
+                  This meant: while overall peak current is global, we can independently modulate the RGB duty levels of LED 17 without interfering with the colors or brightness of the time digits!
+                  </p>
+
+                  <h3>3. Modifying the ESPHome C++ Component</h3>
+
+                  <p>
+                  In the stock driver, <code>Aip33628Panel::loop()</code> wiped the scan buffer on every frame and conditionally drew digits, colon dots, and the AM mark. The date dash was never written during time mode, and <code>apply_colors_()</code> applied uniform base colors or cyclic effects across all segments.
+                  </p>
+
+                  <p>
+                  To make the date dash an autonomous citizen, we made three surgical changes:
+                  </p>
+
+                  <h4>A. Driver Header (<code>components/aip33628/aip33628.h</code>)</h4>
+
+                  <p>
+                  We added state tracking for the dash's active state, custom RGB levels, and brightness:
+                  </p>
+
+                  <pre><code>// Date dash (LED 17, Block 2 SEG_ANNUN) independent control.
+void set_date_dash(bool on) {
+  dash_enabled_ = on;
+  dirty_ = true;
+}
+
+void set_date_dash_color(bool on, float r, float g, float b, float brightness) {
+  dash_enabled_ = on && brightness > 0.0f;
+  dash_custom_color_ = true;
+  dash_rgb_[0] = r < 0.0f ? 0.0f : (r > 1.0f ? 1.0f : r);
+  dash_rgb_[1] = g < 0.0f ? 0.0f : (g > 1.0f ? 1.0f : g);
+  dash_rgb_[2] = b < 0.0f ? 0.0f : (b > 1.0f ? 1.0f : b);
+  dash_brightness_ = brightness < 0.0f ? 0.0f : (brightness > 1.0f ? 1.0f : brightness);
+  dirty_ = true;
+  apply_colors_();
+}
+
+void clear_date_dash_color() {
+  dash_custom_color_ = false;
+  dirty_ = true;
+  apply_colors_();
+}</code></pre>
+
+                  <p>
+                  We also extended the <code>Aip33628Light</code> output wrapper with <code>set_is_dash(bool)</code> so the same C++ class can drive either the main display or the dash entity.
+                  </p>
+
+                  <h4>B. Driver Implementation (<code>components/aip33628/aip33628.cpp</code>)</h4>
+
+                  <p>
+                  In <code>apply_colors_()</code>, we isolate the dash's 4-bit BCM levels so that running effects (like Color Cycle or Flash) do not overwrite it:
+                  </p>
+
+                  <pre><code>for (int blk = 0; blk < 4; blk++) {
+  for (int seg = 0; seg < 9; seg++) {
+    if (blk == 2 && seg == SEG_ANNUN && dash_custom_color_) {
+      level_[blk][seg][CH_RED]   = duty_level(dash_rgb_[0] * dash_brightness_);
+      level_[blk][seg][CH_GREEN] = duty_level(dash_rgb_[1] * dash_brightness_);
+      level_[blk][seg][CH_BLUE]  = duty_level(dash_rgb_[2] * dash_brightness_);
+      continue;
+    }
+    const float *c = pos_set_[blk][seg]  ? pos_rgb_[blk][seg]
+                     : digit_set_[blk]   ? digit_rgb_[blk]
+                                         : base_rgb_;
+    level_[blk][seg][CH_RED]   = duty_level(c[0] * envelope_);
+    level_[blk][seg][CH_GREEN] = duty_level(c[1] * envelope_);
+    level_[blk][seg][CH_BLUE]  = duty_level(c[2] * envelope_);
+  }
+}</code></pre>
+
+                  <p>
+                  Next, in <code>loop()</code>, we make sure the dash is written to the scan schedule during normal clock rendering:
+                  </p>
+
+                  <pre><code>if (dash_enabled_) {
+  write_pos_(2, SEG_ANNUN, true);  // Date dash indicator
+}</code></pre>
+
+                  <p>
+                  Crucially, we also added the dash write inside the <code>if (!enabled_)</code> standby block:
+                  </p>
+
+                  <pre><code>if (!enabled_) {
+  if (dash_enabled_) {
+    write_pos_(2, SEG_ANNUN, true);
+  }
+  render_();
+  return;
+}</code></pre>
+
+                  <p>
+                  Why? I have an automation that turns off the clock display at 22:00 every night. With this check in place, even when the clock digits are completely turned off for sleep, the date dash continues to glow quietly as a low-intensity air quality night-light!
+                  </p>
+
+                  <h4>C. Schema & Configuration (<code>light.py</code> and <code>clock.yaml</code>)</h4>
+
+                  <p>
+                  In <code>components/aip33628/light.py</code>, we added a configuration option <code>type: date_dash</code>:
+                  </p>
+
+                  <pre><code>CONFIG_SCHEMA = light.RGB_LIGHT_SCHEMA.extend({
+    cv.GenerateID(CONF_OUTPUT_ID): cv.declare_id(Aip33628Light),
+    cv.GenerateID(CONF_AIP33628_ID): cv.use_id(Aip33628Panel),
+    cv.Optional("type", default="display"): cv.one_of("display", "date_dash", lower=True),
+}).extend(cv.COMPONENT_SCHEMA)</code></pre>
+
+                  <p>
+                  Then in <code>clock.yaml</code>, we exposed the native RGB light and a companion template switch:
+                  </p>
+
+                  <pre><code>light:
+  - platform: aip33628
+    id: date_dash_light
+    aip33628_id: panel
+    type: date_dash
+    name: Date Dash
+    restore_mode: RESTORE_DEFAULT_OFF
+    gamma_correct: 1.0
+
+switch:
+  - platform: template
+    id: date_dash_switch
+    name: Date Dash
+    icon: mdi:minus
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    turn_on_action:
+      - lambda: |-
+          id(panel)->clear_date_dash_color();
+          id(panel)->set_date_dash(true);
+      - light.turn_on: date_dash_light
+    turn_off_action:
+      - lambda: |-
+          id(panel)->set_date_dash(false);
+      - light.turn_off: date_dash_light</code></pre>
+
+                  <h3>4. Build Infrastructure & OTA Deployment</h3>
+
+                  <p>
+                  Rather than setting up an ESP-IDF toolchain on my laptop, I compiled the firmware directly inside the Home Assistant virtual machine running on my local KVM/libvirt hypervisor:
+                  </p>
+
+                  <pre><code>docker exec app_5c53de3b_esphome esphome compile /config/esphome/clock.yaml</code></pre>
+
+                  <p>
+                  ESPHome 2026.9.1 compiled cleanly:
+                  </p>
+
+                  <ul>
+                    <li><strong>RAM Usage:</strong> 52,912 / 180,736 bytes (29.3%)</li>
+                    <li><strong>Flash Usage:</strong> 965,951 / 1,835,008 bytes (52.6%)</li>
+                    <li><strong>Binary Output:</strong> <code>wifi-clock.bin</code> (966,064 bytes)</li>
+                  </ul>
+
+                  <p>
+                  Because the clock was already mounted on the wall and connected to Wi-Fi at <code>192.168.3.108</code>, I pushed the binary over-the-air:
+                  </p>
+
+                  <pre><code>docker exec app_5c53de3b_esphome esphome upload /config/esphome/clock.yaml --device 192.168.3.108</code></pre>
+
+                  <p>
+                  In 8.85 seconds, the ESPHome encrypted OTA protocol transferred the firmware, rebooted the ESP32, and the serial log resumed streaming sensor telemetry:
+                  </p>
+
+                  <pre><code>INFO Successfully connected to wifi-clock @ 192.168.3.108 in 0.043s
+[12:35:21.307][I][app:151]: ESPHome version 2026.9.1 compiled on 2026-10-18 12:29:47 +0200
+[12:35:24.575][S][sensor]: 'Light' >> 35 %
+[12:35:24.575][S][sensor]: 'Temperature' >> 25.5 &deg;C</code></pre>
+
+                  <h3>5. The "Gray Dash" Mystery & MQTT Sensor Integration</h3>
+
+                  <p>
+                  Once flashed, Home Assistant automatically discovered the new entities:
+                  </p>
+
+                  <ul>
+                    <li><code>light.living_room_wifi_clock_date_dash</code></li>
+                    <li><code>switch.living_room_wifi_clock_date_dash</code></li>
+                  </ul>
+
+                  <p>
+                  I flipped the switch on. The date dash illuminated immediately... but it was a faint <strong>grayish-white</strong>, not the vibrant air quality indicator I wanted!
+                  </p>
+
+                  <p>
+                  What happened?
+                  </p>
+
+                  <ol>
+                    <li>The companion template switch was designed to default to the base display color via <code>clear_date_dash_color()</code>, which falls back to white (<code>[1.0, 1.0, 1.0]</code>).</li>
+                    <li>My initial automation used discrete Home Assistant <code>choose</code> blocks with <code>numeric_state</code> ranges. Due to an indentation quirk in YAML under <code>choose:</code>, the automation had failed to trigger.</li>
+                  </ol>
+
+                  <p>
+                  Checking the MQTT stream from my Raspberry Pi (<code>rpi2</code>) confirmed that the Plantower PMS3003 was broadcasting real-time particulate metrics every 2 seconds:
+                  </p>
+
+                  <pre><code>$ mosquitto_sub -h rpi2 -t "air/pms3003/#" -v
+air/pms3003/pm1_0 1
+air/pms3003/pm2_5 1
+air/pms3003/pm10 1</code></pre>
+
+                  <p>
+                  The sensor data was live and accurate. But instead of fixing a stepped <code>choose</code> table with arbitrary jumps (e.g. green jumping straight to yellow at 12 µg/m³), I decided to implement what I actually wanted: a <strong>continuous color gradient</strong>.
+                  </p>
+
+                  <h3>6. Implementing the Continuous Color Gradient</h3>
+
+                  <p>
+                  A stepped color transition on a living room clock is distracting; your eye catches the sudden jump from green to yellow. A continuous gradient, however, smoothly reflects atmospheric changes without drawing sudden attention.
+                  </p>
+
+                  <p>
+                  We mapped PM2.5 concentrations from 0 to 100 &micro;g/m&sup3; using a 3-phase piecewise linear interpolation:
+                  </p>
+
+                  <ul>
+                    <li><strong>Phase 1: Good to Moderate (0 &le; PM2.5 &le; 25 &micro;g/m&sup3;)</strong><br>
+                    Red ramps up smoothly from 0 to 255 while Green stays at 255. Blue is 0.<br>
+                    Result: Pure Green (<code>[0, 255, 0]</code>) &rarr; Lime &rarr; Pure Yellow (<code>[255, 255, 0]</code>).</li>
+
+                    <li><strong>Phase 2: Moderate to Unhealthy (25 &lt; PM2.5 &le; 55 &micro;g/m&sup3;)</strong><br>
+                    Red stays pinned at 255 while Green decreases smoothly from 255 down to 0.<br>
+                    Result: Yellow (<code>[255, 255, 0]</code>) &rarr; Amber &rarr; Orange &rarr; Pure Red (<code>[255, 0, 0]</code>).</li>
+
+                    <li><strong>Phase 3: Very Unhealthy / Hazardous (PM2.5 &gt; 55 &micro;g/m&sup3;)</strong><br>
+                    Red stays at 255, Green is 0, and Blue increases towards 180.<br>
+                    Result: Red &rarr; Crimson &rarr; Magenta (<code>[255, 0, 180]</code>).</li>
+                  </ul>
+
+                  <p>
+                  Here is the complete Home Assistant automation added to <code>automations.yaml</code>:
+                  </p>
+
+                  <pre><code>- id: 'clock_date_dash_pms3003'
+  alias: 'Clock Date Dash PMS3003 AQI'
+  description: 'Smoothly modulates Date Dash LED color from green to red based on PMS3003 PM2.5 reading'
+  triggers:
+  - trigger: state
+    entity_id: sensor.pms3003_pm2_5
+  - trigger: homeassistant
+    event: start
+  conditions: []
+  actions:
+  - action: light.turn_on
+    target:
+      entity_id: light.living_room_wifi_clock_date_dash
+    data:
+      brightness: 160
+      transition: 2
+      rgb_color: >-
+        {% set raw_pm = states('sensor.pms3003_pm2_5') | float(0) %}
+        {% set pm = [0.0, [raw_pm, 100.0] | min] | max %}
+        {% if pm <= 25.0 %}
+          {% set r = ((pm / 25.0) * 255.0) | round | int %}
+          {% set g = 255 %}
+          {% set b = 0 %}
+        {% elif pm <= 55.0 %}
+          {% set r = 255 %}
+          {% set g = (((55.0 - pm) / 30.0) * 255.0) | round | int %}
+          {% set b = 0 %}
+        {% else %}
+          {% set r = 255 %}
+          {% set g = 0 %}
+          {% set b = (((pm - 55.0) / 45.0) * 180.0) | round | int %}
+        {% endif %}
+        [{{ r }}, {{ g }}, {{ b }}]
+  mode: restart</code></pre>
+
+                  <p>
+                  <strong>Why <code>transition: 2</code> is magical:</strong> In ESPHome, <code>Aip33628Light::write_state()</code> extracts normalized color ratios and gamma-corrected brightness on every tick of the transition curve. When Home Assistant requests a 2-second transition, the ESP32 calculates intermediate 4-bit BCM duty steps at 25Hz. Whenever particulate levels drift, the dash gently glides into its new hue over two seconds.
+                  </p>
+
+                  <h3>7. Verification & Results</h3>
+
+                  <p>
+                  After validating the configuration with <code>ha core check</code> and restarting Home Assistant Core, the automation triggered on boot.
+                  </p>
+
+                  <p>
+                  With the room air currently pristine at PM2.5 = 1 &micro;g/m&sup3;:
+                  </p>
+
+                  <pre><code>r = round((1.0 / 25.0) * 255) = 10
+g = 255
+b = 0
+rgb_color = [10, 255, 0]</code></pre>
+
+                  <p>
+                  The date dash glows with a rich, vibrant emerald green. During kitchen cooking tests when PM2.5 jumped to 38 &micro;g/m&sup3;, the dash smoothly shifted through lemon-lime and yellow into a warm amber-orange, fading back to green as ventilation cleared the room.
+                  </p>
+
+                  <h3>Summary</h3>
+
+                  <p>
+                  Repurposing unused display segments is one of the most satisfying hardware hacks:
+                  </p>
+
+                  <ul>
+                    <li>The AiP33628 driver's 4-bit Binary Code Modulation (BCM) allows independent per-LED duty modulation even when global current <code>IS[3:0]</code> is fixed.</li>
+                    <li>Modifying ESPHome's custom components allowed clean isolation of LED 17 (Block 2 <code>SEG_ANNUN</code>) without interfering with the main clock display or digit cycle effects.</li>
+                    <li>Using a continuous piecewise linear gradient in Home Assistant Jinja2 with native ESPHome transitions transforms an idle LED into an elegant, non-intrusive environmental display.</li>
+                  </ul>
+                </div>
+              </article>
+            </div>
+          </div>
+        </div>
+
+        <footer id="footer" role="contentinfo">
+          <div id="footer-inner">
+            <p id="footer-copyright">Copyright &copy; Dobrica Pavlinu&scaron;i&#x107;. Powered by Movable Type.</p>
+          </div>
+        </footer>
+      </div>
+    </div>
+  </body>
+</html>
