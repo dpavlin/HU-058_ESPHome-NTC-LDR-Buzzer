@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HU-058 ESP32 Clock PWM & LED Brightness Simulation</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card-bg: #161b22;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --text-muted: #8b949e;
+      --accent: #58a6ff;
+      --danger: #f85149;
+      --warning: #d29922;
+      --success: #3fb950;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding: 20px;
+    }
+    .container { max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+    header { border-bottom: 1px solid var(--border); padding-bottom: 15px; }
+    h1 { font-size: 1.6rem; color: #fff; margin-bottom: 6px; }
+    p.subtitle { color: var(--text-muted); font-size: 0.95rem; }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .card-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+
+    /* Clock Display Styles */
+    .clock-display-panel {
+      background: #05070a;
+      border: 2px solid #21262d;
+      border-radius: 12px;
+      padding: 25px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 15px;
+      box-shadow: inset 0 0 30px rgba(0,0,0,0.8);
+    }
+    .clock-digits-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+    .digit-group { display: flex; gap: 8px; }
+    .digit-svg { width: 72px; height: 110px; filter: drop-shadow(0 0 6px currentColor); }
+    .colon-dash-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      width: 32px;
+    }
+    .colon-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #333;
+      transition: background 0.05s ease;
+    }
+    .date-dash-bar {
+      width: 24px;
+      height: 8px;
+      border-radius: 3px;
+      background: #333;
+      transition: background 0.05s ease;
+      box-shadow: 0 0 8px currentColor;
+    }
+
+    /* Controls */
+    .control-row { display: flex; flex-direction: column; gap: 6px; }
+    .control-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.88rem;
+      font-weight: 500;
+    }
+    .control-label span.val { color: var(--accent); font-family: monospace; }
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+    button {
+      background: #21262d;
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    button:hover { background: #30363d; border-color: #8b949e; }
+    button.active { background: var(--accent); color: #0d1117; font-weight: 600; border-color: var(--accent); }
+
+    /* Telemetry Table */
+    .telemetry-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; font-family: monospace; }
+    .telemetry-table th, .telemetry-table td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+    .telemetry-table th { color: var(--text-muted); font-weight: 500; }
+    .badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.78rem;
+      font-weight: bold;
+    }
+    .badge-jump { background: rgba(248, 81, 73, 0.2); color: var(--danger); border: 1px solid var(--danger); }
+    .badge-ok { background: rgba(63, 185, 80, 0.2); color: var(--success); border: 1px solid var(--success); }
+
+    /* Canvas Graph */
+    canvas { background: #05070a; border: 1px solid var(--border); border-radius: 6px; width: 100%; height: 200px; }
+
+    /* Comparison Bar */
+    .spectrum-compare { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+    .spectrum-bar {
+      height: 28px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      position: relative;
+    }
+    .spectrum-pointer {
+      position: absolute;
+      top: -4px;
+      bottom: -4px;
+      width: 4px;
+      background: #fff;
+      box-shadow: 0 0 6px #000;
+      transform: translateX(-50%);
+    }
+
+    .callout {
+      background: rgba(88, 166, 255, 0.1);
+      border-left: 4px solid var(--accent);
+      padding: 10px 14px;
+      font-size: 0.88rem;
+      border-radius: 0 6px 6px 0;
+    }
+    .callout.warning {
+      background: rgba(210, 153, 34, 0.1);
+      border-left-color: var(--warning);
+    }
+    .callout.danger {
+      background: rgba(248, 81, 73, 0.1);
+      border-left-color: var(--danger);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>HU-058 ESP32 Clock PWM & LED Brightness Simulation</h1>
+      <p class="subtitle">Investigating quantization jumps, 4-bit Binary Code Modulation (BCM), gamma distortion, and human perceptual non-linearities.</p>
+    </header>
+
+    <!-- Side-by-side Visual Replica -->
+    <div class="grid-2">
+      <!-- Continuous Ideal View -->
+      <div class="card">
+        <div class="card-title">
+          <span>Continuous Target (Ideal 24-bit sRGB)</span>
+          <span class="badge badge-ok">Theoretical Smooth</span>
+        </div>
+        <div class="clock-display-panel" id="ideal-panel">
+          <div class="clock-digits-row">
+            <div class="digit-group" id="ideal-hours">
+              <svg class="digit-svg" id="ideal-d0" viewBox="0 0 100 150"></svg>
+              <svg class="digit-svg" id="ideal-d1" viewBox="0 0 100 150"></svg>
+            </div>
+            <div class="colon-dash-group">
+              <div class="colon-dot" id="ideal-colon-top"></div>
+              <div class="date-dash-bar" id="ideal-dash"></div>
+              <div class="colon-dot" id="ideal-colon-bot"></div>
+            </div>
+            <div class="digit-group" id="ideal-minutes">
+              <svg class="digit-svg" id="ideal-d2" viewBox="0 0 100 150"></svg>
+              <svg class="digit-svg" id="ideal-d3" viewBox="0 0 100 150"></svg>
+            </div>
+          </div>
+          <div style="font-size:0.85rem; color:var(--text-muted);">Simulated Infinite Bit-Depth Output</div>
+        </div>
+        <div class="control-row">
+          <div class="control-label">
+            <span>Ideal Input RGB</span>
+            <span class="val" id="ideal-rgb-text">rgb(255, 255, 0)</span>
+          </div>
+          <div class="control-label">
+            <span>Perceived Lightness (L*)</span>
+            <span class="val" id="ideal-l-text">100.0%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Real Hardware 4-Bit View -->
+      <div class="card">
+        <div class="card-title">
+          <span>Actual Clock Output (AiP33628 4-Bit BCM)</span>
+          <span class="badge badge-jump" id="jump-indicator">16 Discrete Levels</span>
+        </div>
+        <div class="clock-display-panel" id="hw-panel">
+          <div class="clock-digits-row">
+            <div class="digit-group" id="hw-hours">
+              <svg class="digit-svg" id="hw-d0" viewBox="0 0 100 150"></svg>
+              <svg class="digit-svg" id="hw-d1" viewBox="0 0 100 150"></svg>
+            </div>
+            <div class="colon-dash-group">
+              <div class="colon-dot" id="hw-colon-top"></div>
+              <div class="date-dash-bar" id="hw-dash"></div>
+              <div class="colon-dot" id="hw-colon-bot"></div>
+            </div>
+            <div class="digit-group" id="hw-minutes">
+              <svg class="digit-svg" id="hw-d2" viewBox="0 0 100 150"></svg>
+              <svg class="digit-svg" id="hw-d3" viewBox="0 0 100 150"></svg>
+            </div>
+          </div>
+          <div style="font-size:0.85rem; color:var(--text-muted);" id="hw-status-sub">AiP33628 Emulation (Duty 0..15)</div>
+        </div>
+        <div class="control-row">
+          <div class="control-label">
+            <span>BCM Duty Levels [R, G, B]</span>
+            <span class="val" id="hw-duty-text">[15, 15, 0] / 15</span>
+          </div>
+          <div class="control-label">
+            <span>Hardware Emulated Output RGB</span>
+            <span class="val" id="hw-rgb-text">rgb(255, 255, 0)</span>
+          </div>
+          <div class="control-label">
+            <span>Perceived Lightness (L*)</span>
+            <span class="val" id="hw-l-text">100.0%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Interactive Testing Controls -->
+    <div class="card">
+      <div class="card-title">
+        <span>Firmware Profile Preset:</span>
+        <div class="btn-group" id="preset-buttons">
+          <button id="btn-preset-old" data-preset="old">Old Baseline (&gamma;=2.8, Raw 4-Bit BCM)</button>
+          <button id="btn-preset-new" class="active" data-preset="new" style="border-color:var(--accent); color:var(--accent);">★ Deployed Upgrade (&gamma;=2.0, 4-Frame FRC Dither, 60 Steps)</button>
+        </div>
+      </div>
+      <div class="card-title" style="margin-top:10px;">
+        <span>Transition Scenario:</span>
+        <div class="btn-group" id="scenario-buttons">
+          <button class="active" data-scenario="yellow-red">Yellow &rarr; Red Fade</button>
+          <button data-scenario="dark-blue">Cyan &rarr; Dark Blue &rarr; Magenta</button>
+          <button data-scenario="aqi-dash">Date Dash AQI (PM2.5)</button>
+          <button data-scenario="color-cycle">Color Cycle (Hue 0&deg;&ndash;360&deg;)</button>
+          <button data-scenario="single-fade">Single Channel Fade (0&ndash;100%)</button>
+        </div>
+      </div>
+
+      <!-- Parameter Sliders -->
+      <div class="grid-2">
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <div class="control-row">
+            <div class="control-label">
+              <span id="slider-param-name">Transition Progress (t)</span>
+              <span class="val" id="slider-param-val">0.00</span>
+            </div>
+            <input type="range" id="main-slider" min="0" max="1000" value="0">
+          </div>
+
+          <div class="control-row">
+            <div class="control-label">
+              <span>Master Panel Brightness (Slider)</span>
+              <span class="val" id="brightness-val">100% (IS: 40.4 mA)</span>
+            </div>
+            <input type="range" id="brightness-slider" min="1" max="100" value="100">
+          </div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <div class="control-row">
+            <div class="control-label">
+              <span>Gamma Correction Model</span>
+              <span class="val" id="gamma-val">&gamma; = 2.0 (New Firmware)</span>
+            </div>
+            <div class="btn-group" id="gamma-buttons">
+              <button data-gamma="2.8">&gamma; = 2.8 (Old Baseline)</button>
+              <button class="active" data-gamma="2.0">&gamma; = 2.0 (New Firmware)</button>
+              <button data-gamma="2.2">&gamma; = 2.2 (Standard sRGB)</button>
+              <button data-gamma="1.8">&gamma; = 1.8 (Milder Toe)</button>
+              <button data-gamma="1.0">&gamma; = 1.0 (Linear)</button>
+            </div>
+          </div>
+
+          <div class="control-row">
+            <div class="control-label">
+              <span>Resolution Enhancement</span>
+              <span class="val" id="dither-val">4-Frame Temporal Dither (60 Steps)</span>
+            </div>
+            <div class="btn-group" id="dither-buttons">
+              <button data-dither="none">Raw 4-Bit BCM (15 Steps)</button>
+              <button class="active" data-dither="temporal">4-Frame Temporal Dither (60 Steps)</button>
+              <button data-dither="hybrid">Piecewise Curve (No 30% Dead-Zone)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Spectrum Cross Section -->
+      <div class="spectrum-compare">
+        <div style="font-size:0.85rem; color:var(--text-muted); display:flex; justify-content:space-between;">
+          <span>Continuous Ideal Spectrum</span>
+          <span>Actual Quantized Hardware Steps (notice jagged blocks and sudden cuts)</span>
+        </div>
+        <div class="spectrum-bar" id="ideal-spectrum-bar"><div class="spectrum-pointer" id="ptr-ideal"></div></div>
+        <div class="spectrum-bar" id="hw-spectrum-bar"><div class="spectrum-pointer" id="ptr-hw"></div></div>
+      </div>
+    </div>
+
+    <!-- Analytical Diagnosis & Plots -->
+    <div class="grid-2">
+      <!-- Canvas Plot of Quantization & Jumps -->
+      <div class="card">
+        <div class="card-title">
+          <span>Quantization Transfer Curve (Float &rarr; Duty Level 0..15)</span>
+          <span style="font-size:0.8rem; color:var(--text-muted);">Red line = current point</span>
+        </div>
+        <canvas id="quant-canvas" width="550" height="220"></canvas>
+        <div class="callout danger" id="diagnostic-callout">
+          <strong>Root Cause:</strong> The current formula <code>lroundf(powf(c, 2.8) * 15)</code> crushes the entire bottom <strong>29.7% of input values into Duty 0</strong>. When crossing 0.297, perceived lightness violently snaps from <strong>0% to 32.4%</strong>.
+        </div>
+      </div>
+
+      <!-- Step Delta Analysis -->
+      <div class="card">
+        <div class="card-title">
+          <span>Perceived Step Magnitude (&Delta;L* vs Stevens Power Law)</span>
+          <span style="font-size:0.8rem; color:var(--text-muted);">Human Eye Sensitivity</span>
+        </div>
+        <canvas id="delta-canvas" width="550" height="220"></canvas>
+        <div class="callout warning" id="blue-callout">
+          <strong>Why Dark Blues & Yellow&rarr;Red Jump:</strong>
+          <ul style="margin-left: 20px; margin-top: 4px;">
+            <li><strong>Yellow &rarr; Red:</strong> Green drops from 1.0 to 0. At 0.297, Green suddenly drops from duty 1 to 0, killing the last ~32% of green emission in a single instant.</li>
+            <li><strong>Dark Blues:</strong> Human eye luminous efficacy for blue is only 7% compared to green (72%). Low duty steps (0 &rarr; 1 &rarr; 2) span huge perceptual chasms with no intermediate shades.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mathematical Explanation & Fix Demonstration -->
+    <div class="card">
+      <div class="card-title">
+        <span>Why This Happens: Hardware Architecture vs Software Math</span>
+      </div>
+      <table class="telemetry-table">
+        <thead>
+          <tr>
+            <th>Duty Step (L)</th>
+            <th>Input Range c &isin; [min, max]</th>
+            <th>Range Span &Delta;c</th>
+            <th>Linear Light (L/15)</th>
+            <th>Human Perceived Lightness L*</th>
+            <th>Step Jump &Delta;L*</th>
+            <th>Behavior</th>
+          </tr>
+        </thead>
+        <tbody id="telemetry-tbody">
+          <!-- Populated by JS -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    // Constants from aip33628.cpp
+    const IS_MA = [2.5, 5.0, 7.5, 10.0, 12.5, 15.0, 17.5, 20.0, 22.5, 25.0, 27.5, 30.0, 32.5, 35.0, 37.5, 40.4];
+    let currentGamma = 2.0;
+    let currentDither = 'temporal';
+    let currentScenario = 'yellow-red';
+    let currentBrightness = 1.0;
+    let currentProgress = 0.0;
+
+    // 7-segment digit SVG paths (A, B, C, D, E, F, G)
+    const SEG_PATHS = {
+      a: "M 22 14 L 78 14 L 68 24 L 32 24 Z",
+      b: "M 80 16 L 86 22 L 78 68 L 70 60 L 76 26 Z",
+      c: "M 76 80 L 84 72 L 78 124 L 70 130 L 68 88 Z",
+      d: "M 32 126 L 68 126 L 78 136 L 22 136 Z",
+      e: "M 22 80 L 30 88 L 28 130 L 20 124 L 14 72 Z",
+      f: "M 22 26 L 30 24 L 28 60 L 20 68 L 14 22 Z",
+      g: "M 26 73 L 34 67 L 66 67 L 74 73 L 66 79 L 34 79 Z"
+    };
+    const GLYPHS = {
+      '1': ['b', 'c'],
+      '2': ['a', 'b', 'g', 'e', 'd'],
+      '3': ['a', 'b', 'g', 'c', 'd'],
+      '4': ['f', 'g', 'b', 'c'],
+      '5': ['a', 'f', 'g', 'c', 'd'],
+      '6': ['a', 'f', 'g', 'e', 'c', 'd'],
+      '7': ['a', 'b', 'c'],
+      '8': ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
+      '9': ['a', 'b', 'c', 'd', 'f', 'g'],
+      '0': ['a', 'b', 'c', 'd', 'e', 'f']
+    };
+
+    function initDigitSvg(svgId, defaultChar) {
+      const svg = document.getElementById(svgId);
+      svg.innerHTML = '';
+      for (const [seg, d] of Object.entries(SEG_PATHS)) {
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", d);
+        path.setAttribute("class", `seg seg-${seg}`);
+        path.setAttribute("fill", "#1a1f26");
+        svg.appendChild(path);
+      }
+      setDigitChar(svgId, defaultChar);
+    }
+
+    function setDigitChar(svgId, char) {
+      const svg = document.getElementById(svgId);
+      const activeSegs = GLYPHS[char] || [];
+      svg.querySelectorAll('.seg').forEach(path => {
+        const seg = path.classList[1].replace('seg-', '');
+        path.dataset.active = activeSegs.includes(seg) ? "1" : "0";
+      });
+    }
+
+    function setDigitColor(svgId, rgbStr, glow) {
+      const svg = document.getElementById(svgId);
+      svg.querySelectorAll('.seg').forEach(path => {
+        if (path.dataset.active === "1") {
+          path.setAttribute("fill", rgbStr);
+          path.style.opacity = "1";
+        } else {
+          path.setAttribute("fill", "#13171e");
+          path.style.opacity = "0.4";
+        }
+      });
+      svg.style.filter = glow ? `drop-shadow(0 0 6px ${rgbStr})` : 'none';
+    }
+
+    // Hardware Current Step calculation
+    function currentFor(brightness, gamma) {
+      const p_min = Math.pow(IS_MA[0] / IS_MA[15], 1.0 / gamma);
+      const p = p_min + Math.min(1.0, Math.max(0.0, brightness)) * (1.0 - p_min);
+      const want = Math.pow(p, gamma) * IS_MA[15];
+      let best = 0;
+      for (let i = 1; i < 16; i++) {
+        if (Math.abs(IS_MA[i] - want) < Math.abs(IS_MA[best] - want)) best = i;
+      }
+      return best;
+    }
+
+    // Duty level calculation under various models
+    function calculateDuty(c, gamma, ditherMode) {
+      c = Math.min(1.0, Math.max(0.0, c));
+      
+      if (ditherMode === 'hybrid') {
+        // Linear toe below 0.25 to prevent crushed black zone
+        let linLight;
+        if (c < 0.25) {
+          linLight = (c / 0.25) * Math.pow(0.25, 2.0); // smooth linear toe
+        } else {
+          linLight = Math.pow(c, 2.0);
+        }
+        return Math.round(linLight * 15);
+      }
+
+      if (ditherMode === 'temporal') {
+        // Continuous fractional duty (representing 4-frame temporal dither)
+        const exact = Math.pow(c, gamma) * 15.0;
+        // 4 frames give 4x sub-steps = 60 quantization steps
+        return Math.round(exact * 4.0) / 4.0;
+      }
+
+      // Default current code: lroundf(powf(c, gamma) * 15)
+      return Math.round(Math.pow(c, gamma) * 15);
+    }
+
+    // Human perception approximation: L* ~ (linear_light)^(1/2.4)
+    function perceivedLight(linearFraction) {
+      if (linearFraction <= 0) return 0.0;
+      return Math.pow(linearFraction, 1.0 / 2.4);
+    }
+
+    // Calculate Scenario Colors
+    function getScenarioInputColor(scenario, t) {
+      let r = 0, g = 0, b = 0;
+      switch (scenario) {
+        case 'yellow-red':
+          // t from 0 (Yellow [1,1,0]) to 1 (Red [1,0,0])
+          r = 1.0;
+          g = 1.0 - t;
+          b = 0.0;
+          break;
+        case 'dark-blue':
+          // t from 0 (Cyan [0,1,1]) -> Blue [0,0,1] -> Magenta [1,0,1]
+          if (t <= 0.5) {
+            const u = t / 0.5;
+            r = 0.0;
+            g = 1.0 - u;
+            b = 1.0;
+          } else {
+            const u = (t - 0.5) / 0.5;
+            r = u;
+            g = 0.0;
+            b = 1.0;
+          }
+          break;
+        case 'aqi-dash':
+          // t represents PM2.5 from 0 to 100 ug/m3
+          const pm = t * 100.0;
+          if (pm <= 25.0) {
+            r = (pm / 25.0);
+            g = 1.0;
+            b = 0.0;
+          } else if (pm <= 55.0) {
+            r = 1.0;
+            g = (55.0 - pm) / 30.0;
+            b = 0.0;
+          } else {
+            r = 1.0;
+            g = 0.0;
+            b = Math.min(1.0, (pm - 55.0) / 45.0 * (180.0 / 255.0));
+          }
+          break;
+        case 'color-cycle':
+          // Hue 0 to 1 across 360 deg
+          const h = (t - Math.floor(t)) * 6.0;
+          const i = Math.floor(h);
+          const f = h - i;
+          if (i % 6 === 0) { r = 1.0; g = f; b = 0.0; }
+          else if (i % 6 === 1) { r = 1.0 - f; g = 1.0; b = 0.0; }
+          else if (i % 6 === 2) { r = 0.0; g = 1.0; b = f; }
+          else if (i % 6 === 3) { r = 0.0; g = 1.0 - f; b = 1.0; }
+          else if (i % 6 === 4) { r = f; g = 0.0; b = 1.0; }
+          else { r = 1.0; g = 0.0; b = 1.0 - f; }
+          break;
+        case 'single-fade':
+          r = t; g = t; b = t;
+          break;
+      }
+      return [Math.max(0, Math.min(1, r)), Math.max(0, Math.min(1, g)), Math.max(0, Math.min(1, b))];
+    }
+
+    function renderSimulation() {
+      const [rIn, gIn, bIn] = getScenarioInputColor(currentScenario, currentProgress);
+
+      // Ideal Display
+      const rIdealByte = Math.round(rIn * 255);
+      const gIdealByte = Math.round(gIn * 255);
+      const bIdealByte = Math.round(bIn * 255);
+      const idealColorStr = `rgb(${rIdealByte}, ${gIdealByte}, ${bIdealByte})`;
+
+      document.getElementById('ideal-rgb-text').textContent = idealColorStr;
+      const idealLum = (0.2126 * rIn + 0.7152 * gIn + 0.0722 * bIn);
+      const idealPerceived = perceivedLight(idealLum) * 100.0;
+      document.getElementById('ideal-l-text').textContent = `${idealPerceived.toFixed(1)}%`;
+
+      setDigitColor('ideal-d0', idealColorStr, true);
+      setDigitColor('ideal-d1', idealColorStr, true);
+      setDigitColor('ideal-d2', idealColorStr, true);
+      setDigitColor('ideal-d3', idealColorStr, true);
+      document.getElementById('ideal-colon-top').style.background = idealColorStr;
+      document.getElementById('ideal-colon-bot').style.background = idealColorStr;
+      document.getElementById('ideal-dash').style.background = idealColorStr;
+      document.getElementById('ideal-dash').style.color = idealColorStr;
+
+      // Hardware 4-Bit Emulation
+      const dutyR = calculateDuty(rIn, currentGamma, currentDither);
+      const dutyG = calculateDuty(gIn, currentGamma, currentDither);
+      const dutyB = calculateDuty(bIn, currentGamma, currentDither);
+
+      // Current Step scaling
+      const isStep = currentFor(currentBrightness, currentGamma);
+      const isCurrentFrac = IS_MA[isStep] / IS_MA[15];
+
+      // Physical emission is duty / 15 * current / max_current
+      const emitR = (dutyR / 15.0) * isCurrentFrac;
+      const emitG = (dutyG / 15.0) * isCurrentFrac;
+      const emitB = (dutyB / 15.0) * isCurrentFrac;
+
+      // Render on screen (sRGB display mapping: gamma 2.2 compensation)
+      const screenR = Math.round(Math.pow(Math.min(1, emitR), 1.0 / 2.2) * 255);
+      const screenG = Math.round(Math.pow(Math.min(1, emitG), 1.0 / 2.2) * 255);
+      const screenB = Math.round(Math.pow(Math.min(1, emitB), 1.0 / 2.2) * 255);
+      const hwColorStr = `rgb(${screenR}, ${screenG}, ${screenB})`;
+
+      document.getElementById('hw-duty-text').textContent = `[${dutyR}, ${dutyG}, ${dutyB}] / 15`;
+      document.getElementById('hw-rgb-text').textContent = hwColorStr;
+
+      const hwLum = (0.2126 * emitR + 0.7152 * emitG + 0.0722 * emitB);
+      const hwPerceived = perceivedLight(hwLum) * 100.0;
+      document.getElementById('hw-l-text').textContent = `${hwPerceived.toFixed(1)}%`;
+
+      setDigitColor('hw-d0', hwColorStr, screenR + screenG + screenB > 30);
+      setDigitColor('hw-d1', hwColorStr, screenR + screenG + screenB > 30);
+      setDigitColor('hw-d2', hwColorStr, screenR + screenG + screenB > 30);
+      setDigitColor('hw-d3', hwColorStr, screenR + screenG + screenB > 30);
+      document.getElementById('hw-colon-top').style.background = hwColorStr;
+      document.getElementById('hw-colon-bot').style.background = hwColorStr;
+      document.getElementById('hw-dash').style.background = hwColorStr;
+      document.getElementById('hw-dash').style.color = hwColorStr;
+
+      // Pointer update
+      document.getElementById('ptr-ideal').style.left = `${currentProgress * 100}%`;
+      document.getElementById('ptr-hw').style.left = `${currentProgress * 100}%`;
+
+      // Draw Curves
+      drawQuantizationCanvas(rIn, gIn, bIn, dutyR, dutyG, dutyB);
+      drawDeltaCanvas();
+    }
+
+    function renderSpectrumBars() {
+      const idealBar = document.getElementById('ideal-spectrum-bar');
+      const hwBar = document.getElementById('hw-spectrum-bar');
+      const numSamples = 300;
+
+      let idealGrad = 'linear-gradient(to right, ';
+      let hwGrad = 'linear-gradient(to right, ';
+
+      for (let i = 0; i <= numSamples; i++) {
+        const t = i / numSamples;
+        const [r, g, b] = getScenarioInputColor(currentScenario, t);
+        
+        // Ideal
+        const ri = Math.round(r * 255);
+        const gi = Math.round(g * 255);
+        const bi = Math.round(b * 255);
+        idealGrad += `rgb(${ri}, ${gi}, ${bi}) ${t * 100}%${i < numSamples ? ', ' : ''}`;
+
+        // HW
+        const dr = calculateDuty(r, currentGamma, currentDither);
+        const dg = calculateDuty(g, currentGamma, currentDither);
+        const db = calculateDuty(b, currentGamma, currentDither);
+        const rhw = Math.round(Math.pow(dr / 15.0, 1.0 / 2.2) * 255);
+        const ghw = Math.round(Math.pow(dg / 15.0, 1.0 / 2.2) * 255);
+        const bhw = Math.round(Math.pow(db / 15.0, 1.0 / 2.2) * 255);
+        hwGrad += `rgb(${rhw}, ${ghw}, ${bhw}) ${t * 100}%${i < numSamples ? ', ' : ''}`;
+      }
+      idealGrad += ')';
+      hwGrad += ')';
+
+      idealBar.style.background = idealGrad;
+      hwBar.style.background = hwGrad;
+    }
+
+    function drawQuantizationCanvas(curR, curG, curB, curDr, curDg, curDb) {
+      const cvs = document.getElementById('quant-canvas');
+      const ctx = cvs.getContext('2d');
+      const w = cvs.width;
+      const h = cvs.height;
+      const pad = 35;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // Axes
+      ctx.strokeStyle = '#30363d';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(pad, 10);
+      ctx.lineTo(pad, h - pad);
+      ctx.lineTo(w - 15, h - pad);
+      ctx.stroke();
+
+      // Axis labels
+      ctx.fillStyle = '#8b949e';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText('15', pad - 5, 18);
+      ctx.fillText('0', pad - 5, h - pad + 3);
+      ctx.textAlign = 'center';
+      ctx.fillText('0.0', pad, h - pad + 18);
+      ctx.fillText('0.5', pad + (w - pad - 15) * 0.5, h - pad + 18);
+      ctx.fillText('1.0 (Input c)', w - 30, h - pad + 18);
+
+      // Dead-zone shading (c from 0 to 0.297)
+      if (currentDither === 'none') {
+        const deadX = Math.pow(0.5 / 15.0, 1.0 / currentGamma);
+        const pxDead = pad + deadX * (w - pad - 15);
+        ctx.fillStyle = 'rgba(248, 81, 73, 0.15)';
+        ctx.fillRect(pad, 10, pxDead - pad, h - pad - 10);
+        ctx.fillStyle = '#f85149';
+        ctx.fillText(`Dead Zone (0..${deadX.toFixed(2)})`, (pad + pxDead) / 2, h / 2);
+      }
+
+      // Step Curve
+      ctx.strokeStyle = '#58a6ff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let x = 0; x <= (w - pad - 15); x++) {
+        const c = x / (w - pad - 15);
+        const duty = calculateDuty(c, currentGamma, currentDither);
+        const y = (h - pad) - (duty / 15.0) * (h - pad - 20);
+        const px = pad + x;
+        if (x === 0) ctx.moveTo(px, y);
+        else ctx.lineTo(px, y);
+      }
+      ctx.stroke();
+
+      // Current Green marker (key to Yellow->Red jump)
+      const ptX = pad + curG * (w - pad - 15);
+      const ptY = (h - pad) - (curDg / 15.0) * (h - pad - 20);
+      ctx.fillStyle = '#3fb950';
+      ctx.beginPath();
+      ctx.arc(ptX, ptY, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillText(`Green: c=${curG.toFixed(2)}, L=${curDg}`, ptX + 5, ptY - 8);
+    }
+
+    function drawDeltaCanvas() {
+      const cvs = document.getElementById('delta-canvas');
+      const ctx = cvs.getContext('2d');
+      const w = cvs.width;
+      const h = cvs.height;
+      const pad = 35;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // Axes
+      ctx.strokeStyle = '#30363d';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(pad, 10);
+      ctx.lineTo(pad, h - pad);
+      ctx.lineTo(w - 15, h - pad);
+      ctx.stroke();
+
+      ctx.fillStyle = '#8b949e';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText('35%', pad - 5, 20);
+      ctx.fillText('0%', pad - 5, h - pad);
+      ctx.textAlign = 'center';
+      ctx.fillText('Step L (0 &rarr; 15)', w / 2, h - pad + 18);
+
+      // Bar graph of Delta L*
+      const barW = (w - pad - 25) / 15;
+      let prevLstar = 0.0;
+      for (let L = 1; L <= 15; L++) {
+        const lstar = perceivedLight(L / 15.0) * 100.0;
+        const delta = lstar - prevLstar;
+        prevLstar = lstar;
+
+        const bx = pad + (L - 1) * barW + 4;
+        const bh = (delta / 35.0) * (h - pad - 25);
+        const by = (h - pad) - bh;
+
+        // Level 1 jump is huge (>30%)
+        ctx.fillStyle = delta > 20 ? '#f85149' : (delta > 8 ? '#d29922' : '#58a6ff');
+        ctx.fillRect(bx, by, barW - 6, bh);
+
+        ctx.fillStyle = '#c9d1d9';
+        ctx.font = '9px monospace';
+        ctx.textAlign = 'center';
+        if (L === 1 || L % 3 === 0) {
+          ctx.fillText(`+${delta.toFixed(0)}%`, bx + (barW - 6) / 2, by - 4);
+          ctx.fillText(`${L}`, bx + (barW - 6) / 2, h - pad + 12);
+        }
+      }
+    }
+
+    function populateTelemetryTable() {
+      const tbody = document.getElementById('telemetry-tbody');
+      tbody.innerHTML = '';
+      let prevPerc = 0.0;
+
+      for (let L = 0; L <= 15; L++) {
+        const c_low = L > 0 ? Math.pow((L - 0.5) / 15.0, 1.0 / currentGamma) : 0.0;
+        const c_high = L < 15 ? Math.pow((L + 0.5) / 15.0, 1.0 / currentGamma) : 1.0;
+        const width = c_high - c_low;
+        const dutyLin = L / 15.0;
+        const perc = perceivedLight(dutyLin) * 100.0;
+        const deltaPerc = L === 0 ? 0.0 : perc - prevPerc;
+        prevPerc = perc;
+
+        const tr = document.createElement('tr');
+        if (L === 0) tr.style.background = 'rgba(248, 81, 73, 0.1)';
+        if (L === 1) tr.style.background = 'rgba(210, 153, 34, 0.1)';
+
+        let note = '';
+        if (L === 0) note = '<span class="badge badge-jump">CRUSHED DEAD-ZONE (30%)</span>';
+        else if (L === 1) note = '<span class="badge badge-jump">MASSIVE JUMP (+32.4%)</span>';
+        else if (L >= 14) note = '<span class="badge badge-ok">Fine steps (2.5%)</span>';
+
+        tr.innerHTML = `
+          <td><strong>${L}</strong></td>
+          <td>[${c_low.toFixed(4)}, ${c_high.toFixed(4)}]</td>
+          <td>${(width * 100).toFixed(1)}%</td>
+          <td>${dutyLin.toFixed(3)}</td>
+          <td>${perc.toFixed(1)}%</td>
+          <td style="color:${deltaPerc > 20 ? 'var(--danger)' : 'var(--text)'}; font-weight:bold;">${L === 0 ? '-' : '+' + deltaPerc.toFixed(1) + '%'}</td>
+          <td>${note}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
+    // Event Listeners
+    document.getElementById('main-slider').addEventListener('input', (e) => {
+      currentProgress = e.target.value / 1000.0;
+      updateSliderLabel();
+      renderSimulation();
+    });
+
+    document.getElementById('brightness-slider').addEventListener('input', (e) => {
+      currentBrightness = e.target.value / 100.0;
+      const step = currentFor(currentBrightness, currentGamma);
+      document.getElementById('brightness-val').textContent = `${e.target.value}% (IS: ${IS_MA[step]} mA)`;
+      renderSimulation();
+    });
+
+    function updateSliderLabel() {
+      const label = document.getElementById('slider-param-name');
+      const val = document.getElementById('slider-param-val');
+      if (currentScenario === 'aqi-dash') {
+        const pm = (currentProgress * 100).toFixed(1);
+        label.textContent = 'Particulate Concentration PM2.5';
+        val.textContent = `${pm} µg/m³`;
+      } else if (currentScenario === 'color-cycle') {
+        const deg = Math.round(currentProgress * 360);
+        label.textContent = 'Color Wheel Hue Angle';
+        val.textContent = `${deg}°`;
+      } else {
+        label.textContent = 'Transition Progress (t)';
+        val.textContent = currentProgress.toFixed(3);
+      }
+    }
+
+    // Scenario switching
+    document.querySelectorAll('#scenario-buttons button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#scenario-buttons button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentScenario = btn.dataset.scenario;
+        updateSliderLabel();
+        renderSpectrumBars();
+        renderSimulation();
+      });
+    });
+
+    // Gamma switching
+    document.querySelectorAll('#gamma-buttons button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#gamma-buttons button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentGamma = parseFloat(btn.dataset.gamma);
+        document.getElementById('gamma-val').textContent = `γ = ${currentGamma}`;
+        populateTelemetryTable();
+        renderSpectrumBars();
+        renderSimulation();
+      });
+    });
+
+    // Dither switching
+    document.querySelectorAll('#dither-buttons button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#dither-buttons button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentDither = btn.dataset.dither;
+        document.getElementById('dither-val').textContent = btn.textContent;
+        renderSpectrumBars();
+        renderSimulation();
+      });
+    });
+
+    // Preset switching
+    function applyPreset(preset) {
+      if (preset === 'old') {
+        currentGamma = 2.8;
+        currentDither = 'none';
+        document.getElementById('btn-preset-old').classList.add('active');
+        document.getElementById('btn-preset-new').classList.remove('active');
+      } else {
+        currentGamma = 2.0;
+        currentDither = 'temporal';
+        document.getElementById('btn-preset-new').classList.add('active');
+        document.getElementById('btn-preset-old').classList.remove('active');
+      }
+      document.querySelectorAll('#gamma-buttons button').forEach(b => {
+        b.classList.toggle('active', parseFloat(b.dataset.gamma) === currentGamma);
+      });
+      document.querySelectorAll('#dither-buttons button').forEach(b => {
+        b.classList.toggle('active', b.dataset.dither === currentDither);
+      });
+      document.getElementById('gamma-val').textContent = `γ = ${currentGamma}`;
+      document.getElementById('dither-val').textContent = currentDither === 'temporal' ? '4-Frame Temporal Dither (60 Steps)' : 'Raw 4-Bit BCM (15 Steps)';
+      populateTelemetryTable();
+      renderSpectrumBars();
+      renderSimulation();
+    }
+
+    document.getElementById('btn-preset-old').addEventListener('click', () => applyPreset('old'));
+    document.getElementById('btn-preset-new').addEventListener('click', () => applyPreset('new'));
+
+    // Initial Setup
+    initDigitSvg('ideal-d0', '1');
+    initDigitSvg('ideal-d1', '2');
+    initDigitSvg('ideal-d2', '3');
+    initDigitSvg('ideal-d3', '4');
+
+    initDigitSvg('hw-d0', '1');
+    initDigitSvg('hw-d1', '2');
+    initDigitSvg('hw-d2', '3');
+    initDigitSvg('hw-d3', '4');
+
+    populateTelemetryTable();
+    updateSliderLabel();
+    renderSpectrumBars();
+    renderSimulation();
+  </script>
+</body>
+</html>
