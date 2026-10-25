@@ -883,6 +883,8 @@ void Aip33628Panel::render_() {
           uint8_t base_lv = lv >> 2;
           uint8_t frac = lv & 3;
           uint8_t frame_lv = base_lv + ((DITHER_MASK[frac] >> eff_f) & 1);
+          if (frame_lv > 15)
+            frame_lv = 15;
           if (frame_lv == 0)
             continue;
           uint16_t bit = (uint16_t) (1u << (base + ch));
