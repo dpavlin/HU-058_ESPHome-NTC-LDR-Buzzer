@@ -18,7 +18,7 @@ This fork includes significant upgrades to display smoothness, color mixing, har
 - **Home Assistant Telemetry**: Automated color modulation of the AM indicator based on real-time PMS3003 $\text{PM}_{2.5}$ readings ($0 - 100\ \mu\text{g/m}^3$) across a 3-phase piecewise linear ramp:
   - **Good to Moderate** ($0 \le \text{PM}_{2.5} \le 25\ \mu\text{g/m}^3$): Pure Green ($[0, 255, 0]$) $\rightarrow$ Yellow ($[255, 255, 0]$)
   - **Moderate to Unhealthy** ($25 < \text{PM}_{2.5} \le 55\ \mu\text{g/m}^3$): Yellow ($[255, 255, 0]$) $\rightarrow$ Orange $\rightarrow$ Pure Red ($[255, 0, 0]$)
-  - **Very Unhealthy to Hazardous** ($\text{PM}_{2.5} > 55\ \mu\text{g/m}^3$): Red ($[255, 0, 0]$) $\rightarrow$ Crimson $\rightarrow$ Magenta ($[255, 0, 180]$)
+  - **Very Unhealthy to Hazardous** ($\text{PM}_{2.5} > 55\ \mu\text{g/m}^3$): Pure Saturated Red ($[255, 0, 0]$), preventing blue dilution wash-out under diffuser.
 
 ### 4. Interactive PWM & Brightness Simulation Tool
 - **Live Diagnostics Tool**: Open [`clock-pwm-simulation.html`](clock-pwm-simulation.html) in any web browser to inspect:

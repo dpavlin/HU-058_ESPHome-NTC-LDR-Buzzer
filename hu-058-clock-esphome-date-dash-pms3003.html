@@ -484,8 +484,8 @@ air/pms3003/pm10 1</code></pre>
                     Result: Yellow (<code>[255, 255, 0]</code>) &rarr; Amber &rarr; Orange &rarr; Pure Red (<code>[255, 0, 0]</code>).</li>
 
                     <li><strong>Phase 3: Very Unhealthy / Hazardous (PM2.5 &gt; 55 &micro;g/m&sup3;)</strong><br>
-                    Red stays at 255, Green is 0, and Blue increases towards 180.<br>
-                    Result: Red &rarr; Crimson &rarr; Magenta (<code>[255, 0, 180]</code>).</li>
+                    Red stays pinned at 255, Green is 0, and Blue is 0.<br>
+                    Result: Pure Saturated Warning Red (<code>[255, 0, 0]</code>) without any blue dilution washing out under the white silicone diffuser.</li>
                   </ul>
 
                   <p>
@@ -522,7 +522,7 @@ air/pms3003/pm10 1</code></pre>
         {% else %}
           {% set r = 255 %}
           {% set g = 0 %}
-          {% set b = (((pm - 55.0) / 45.0) * 180.0) | round | int %}
+          {% set b = 0 %}
         {% endif %}
         [{{ r }}, {{ g }}, {{ b }}]
   mode: restart</code></pre>
